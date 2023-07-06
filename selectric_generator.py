@@ -1,23 +1,17 @@
 #!/usr/bin/env python
 
-import pymeshlab as ml
 import os
 import subprocess
 
+import pymeshlab as ml
+from openscad_runner import OpenScadRunner
+
 from glyph_tables import typeball
 
-PATH_TO_OPENSCAD = "/usr/bin/openscad"
+FONT = "\"IBM Plex Mono:style=Regular\""
+FONT_SIZE = 2.3
 
 if __name__ == "__main__":
-
-    # Define some values we'll use throughout this
-    # Letters extend out 0.6875" from the center of the typeball
-    # The ball itself has a radius of around 0.6625"
-    # According to John Savard, the platen has a radius around 0.717" or so (http://www.quadibloc.com/comp/pro04.htm)
-    letterRadius = 0.6875*25.4
-    ballRadius = 16.828
-    platenRadius = 0.717*25.4
-
     # Create the main mesh set that will contain the final ball
     mainMeshSet = ml.MeshSet()
 
@@ -26,20 +20,30 @@ if __name__ == "__main__":
         os.mkdir("ballparts")
 
     # Process each glyph in sequence
-    for case, hemisphere in enumerate(typeball):
+    for shift_state, hemisphere in enumerate(typeball):
         for row, line in enumerate(hemisphere):
             for column, glyph in enumerate(line):
                 # Skip this entry if no glyph is provided; otherwise, make an STL with OpenSCAD
-                if glyph=="": continue
-                filename = f"ballparts/{row}-{column}-{case}.stl"
+                if not glyph :
+                    continue
+
+                glyph_stl_path = f"ballparts/{row}-{column}-{shift_state}.stl"
                 # Generate an extruded letter using OpenSCAD
                 # Pass the glyph's unicode codepoint(s) instead of the glyph itself, which I hope makes this more cross-compatible
                 codepoints = [ord(x) for x in glyph]
                 codepoints = str(codepoints).replace(" ","")
-                cmd = f"{PATH_TO_OPENSCAD} -o {filename} -D codepoints={codepoints} -D row={row} -D column={column} -D case={case} oneletter.scad".split()
+                scad_runner = OpenScadRunner(scriptfile = "oneletter.scad",
+                        outfile = glyph_stl_path,
+                        set_vars = {"codepoints": codepoints,
+                            "case": shift_state,
+                            "row": row,
+                            "column": column,
+                            "myFont": FONT,
+                            "fontSize": FONT_SIZE
+                            })
                 print(f"Generating glyph {glyph}...")
-                subprocess.run(cmd)
-                mainMeshSet.load_new_mesh(filename)
+                scad_runner.run()
+                mainMeshSet.load_new_mesh(glyph_stl_path)
                 mainMeshSet.generate_by_merging_visible_meshes()
                 mainMeshSet.save_current_mesh("ballparts/textForTypeball.STL")
                 print(f"Glyph {glyph} complete.")
